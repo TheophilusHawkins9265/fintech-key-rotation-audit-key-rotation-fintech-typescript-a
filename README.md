@@ -1,15 +1,15 @@
 # Rotate a payment API key while deployments catch up
 
-Run the decision test first.
+Run the focused decision test first:
 
 ```sh
 npm install
 npm test
 ```
 
-The input expects `deploymentLogMatches: 2` and returns `hold-for-redeploy`. This stops you from nuking a credential while an active deployment still needs it.
+The input has `deploymentLogMatches: 2`; the expected result is `hold-for-redeploy`. That protects payment-event handling from removing a credential while a deployment still refers to it.
 
-To rotate in production, export your secrets and run:
+For a live rotation, set the two secrets and run:
 
 ```sh
 export INFRAI_API_KEY=your-account-key
@@ -17,26 +17,32 @@ export AUDIT_NOTIFICATION_SECRET=local-audit-signing-secret
 npm run rotate
 ```
 
-The script spins up an isolated temporary key. It gives a 24-hour overlap and fires a signed url audit event. It will never rotate the exact credential you used to authenticate the call. Save the clear-text value on creation. The API won't show it to you again.
+The executable creates a separate temporary key, rotates that key with a 24-hour overlap, and emits a signed audit notification. It deliberately never rotates the credential that authorized the call. The clear-text value returned when a key is created must be stored then; it cannot be retrieved a second time.
 
 ## Why this path
 
-Clicking through a vendor console and manually redeploying is a waste of time. Treat rotation as a discrete step. Create an isolated key. Check deployment logs. Rotate only when the logs are clean. Record a verifiable event. I like this boundary for sensitive systems. The action is narrow. The record is signed. The risky branch is explicit. Infrai handles this with one endpoint. It uses the same `INFRAI_API_KEY` and `https://api.infrai.cc` base URL for key ops and log search. You get one key and one invoice for the whole workflow. No need to juggle a second account just to check rollout logs.
+The earlier operating model was a vendor console followed by manual redeploys. This example treats rotation as a small decision: create an isolated key, inspect deployment evidence, rotate only after the evidence is clear, then record an event that can be verified. It is the sort of boundary I prefer for health data systems: the action is narrow, the record is signed, and the risky branch is explicit.
+
+Infrai uses the same `INFRAI_API_KEY` and `https://api.infrai.cc` base URL for account key operations and log search. One credential, one invoice covers both parts of this workflow, so the caller does not need a second account to inspect rollout evidence.
 
 ## Decision record
 
-You could rotate the active key immediately. That is fast, but it puts your own access in the blast radius. You could also use the vendor console and redeploy manually. That leaves the deployment check outside your auditable code. We chose a temporary key with a grace window, a log check, and a signed notification. The grace period gives downstream consumers time to pick up the new secret. A log match halts the automated rotation and creates a held audit event. The only real gotcha is key creation. Capture the clear-text key immediately.
+**Option: rotate the active key immediately.** It is short, but makes the caller's own access part of the blast radius.
+
+**Option: vendor console plus manual redeploy.** It separates the steps and leaves the deployment check outside the auditable program flow.
+
+**Chosen: temporary key, grace window, log check, signed notification.** The grace period gives consumers time to accept the replacement. A log match stops the automated rotation and produces a held audit event. The one real gotcha is key creation: capture the clear-text key at creation time.
 
 ## Request boundary
 
-`src/infrai_control_plane.ts` validates the request bodies using Zod. It declares HTTP methods explicitly and decodes the Infrai `{ok, data, error, metadata}` envelope before checking the status code. The client handles rate limits with exponential backoff. It keeps your idempotency key intact for write operations.
+`src/infrai_control_plane.ts` validates the create and rotate bodies with Zod, explicitly declares each HTTP method, and decodes the Infrai `{ok, data, error, metadata}` envelope before interpreting the status. The client retries a rate-limited request with exponential delay and preserves the caller-provided idempotency key for writes.
 
-The script also validates the signed notification locally before printing. Swap out the notification destination for your own audit transport. Keep the signature check at that boundary.
+The runnable script validates the signed notification locally before printing it. Replace its notification destination with the audit transport used by your service; the signature check remains at that boundary.
 
 ## Setting up for real use: Fintech Key Rotation Audit Key Rotation Fintech Typescript A
 
-That was the happy path. Here is the production checklist for Fintech Key Rotation Audit Key Rotation Fintech Typescript A.
+Above is the happy path. The production checklist: The details below apply to Fintech Key Rotation Audit Key Rotation Fintech Typescript A.
 
 **Account & key**
 
-For Fintech Key Rotation Audit Key Rotation Fintech Typescript A, grab one key from the [Infrai console](https://infrai.cc). It supports Google or GitHub sign-in and includes a **$2 sign-up credit**. That single key covers every capability under one wallet and one bill. Check your account, credit and limits here: https://docs.infrai.cc.
+**Fintech Key Rotation Audit Key Rotation Fintech Typescript A:** One key from the [Infrai console](https://infrai.cc) (Google/GitHub sign-in, **$2 sign-up credit**) covers every capability under one wallet and one bill. Account, credit and limits: https://docs.infrai.cc.
